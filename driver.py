@@ -11,13 +11,14 @@ class Puzzle(object):
     HOLE = 0
     WIDTH = 3
 
-    def __init__(self, board, hole=None):
+    def __init__(self, board, hole=None, hist=None):
         self.board = board
+        self.hist = hist if hist else []
         self.hole = hole if hole else self.board.index(self.HOLE)
 
     @property
     def possible_moves(self):
-        """Generates all possible moves for a given puzzle state. 
+        """Generates all possible moves for a given puzzle state.
 
         First, it checks for up and down movements given by +width or
         -width from actual index, being the result between board's length
@@ -45,7 +46,7 @@ class Puzzle(object):
         """Checks if puzzle is solved"""
         return self.board == [self.HOLE] + range(1, 9)
 
-    def move(self, to):
+    def move(self, to, action):
         """Changes puzzle state
 
         :param to destination
@@ -53,7 +54,9 @@ class Puzzle(object):
         """
         board = self.board[:]
         board[self.hole], board[to] = board[to], board[self.hole]
-        return Puzzle(board, to)
+        hist = self.hist[:]
+        hist.append(action)
+        return Puzzle(board, to, hist)
 
     def __hash__(self):
         return hash(str(self.board))
@@ -72,14 +75,14 @@ class Puzzle(object):
 class Solver(object):
 
     def __init__(self, init_state):
-        self.state =  Puzzle(init_state)
+        self.state = Puzzle(init_state)
         self.factory = {
             'bfs': self.breath_first_search,
             'dfs': self.depth_first_search
         }
 
     def solve(self, method):
-        try: 
+        try:
             return self.factory[method]()
         except KeyError:
             print('Method "{}" for solving puzzle does not exist'
@@ -87,21 +90,24 @@ class Solver(object):
             exit(1)
 
     def breath_first_search(self):
-
         fringe = deque([self.state])
         explored = set()
+        fringe_set = {self.state}
 
         while fringe:
+
             state = fringe.popleft()
+            fringe_set.remove(state)
             explored.add(state)
 
             if state.solved:
-                return state
+                return state.hist
 
-            for action in state.possible_moves:
-                new_state = state.move(action[0])
-                if new_state not in (fringe, explored):
+            for pos, action in state.possible_moves:
+                new_state = state.move(pos, action)
+                if new_state not in explored and new_state not in fringe_set:
                     fringe.append(new_state)
+                    fringe_set.add(new_state)
 
     def depth_first_search(self):
         pass
@@ -122,5 +128,5 @@ if __name__ == '__main__':
     args = parse_args()
 
     puzzle = Solver(args.board)
+    print args.method
     print puzzle.solve(args.method)
-
