@@ -71,7 +71,6 @@ class Puzzle(object):
 
 class Solver(object):
 
-
     def __init__(self, init_state):
         self.state =  Puzzle(init_state)
         self.factory = {
