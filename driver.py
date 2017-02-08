@@ -89,14 +89,43 @@ class Solver(object):
                   .format(method))
             exit(1)
 
+    def solvable(self):
+        inv = 0
+        board = [e for e in self.state.board if e != 0]
+        for i in range(0, len(board)):
+            for j in board[i+1:]:
+                if board[i] > j:
+                    inv += 1
+        return True if inv % 2 == 0 else False
+
     def breath_first_search(self):
         fringe = deque([self.state])
-        explored = set()
+        explored = {self.state}
         fringe_set = {self.state}
 
         while fringe:
 
             state = fringe.popleft()
+            fringe_set.remove(state)
+
+            if state.solved:
+                return state.hist
+
+            for pos, action in state.possible_moves:
+                new_state = state.move(pos, action)
+                if new_state not in explored and new_state not in fringe_set:
+                    fringe.append(new_state)
+                    fringe_set.add(new_state)
+            explored.add(state)
+
+    def depth_first_search(self):
+        fringe = [self.state]
+        explored = {self.state}
+        fringe_set = {self.state}
+
+        while fringe:
+
+            state = fringe.pop()
             fringe_set.remove(state)
             explored.add(state)
 
@@ -109,9 +138,6 @@ class Solver(object):
                     fringe.append(new_state)
                     fringe_set.add(new_state)
 
-    def depth_first_search(self):
-        pass
-
 
 def parse_args():
 
@@ -119,7 +145,7 @@ def parse_args():
         return map(int, val.split(BOARD_DELIMETER))
 
     parser = argparse.ArgumentParser(description='Puzzle solver')
-    parser.add_argument('method', help='BFS supported')
+    parser.add_argument('method', choices=['bfs', 'dfs'], help='BFS supported')
     parser.add_argument('board', help='The board to solve', type=board)
     return parser.parse_args()
 
@@ -128,5 +154,8 @@ if __name__ == '__main__':
     args = parse_args()
 
     puzzle = Solver(args.board)
-    print args.method
-    print puzzle.solve(args.method)
+
+    if puzzle.solvable():
+        print puzzle.solve(args.method)
+    else:
+        print 'Puzzle is not solvable. It has an odd number of inversions'
