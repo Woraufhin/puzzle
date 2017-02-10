@@ -1,4 +1,5 @@
 import argparse
+import itertools
 from collections import deque
 
 
@@ -91,11 +92,9 @@ class Solver(object):
 
     def solvable(self):
         inv = 0
-        board = [e for e in self.state.board if e != 0]
-        for i in range(0, len(board)):
-            for j in board[i+1:]:
-                if board[i] > j:
-                    inv += 1
+        for i, j in itertools.combinations(self.state.board, 2):
+            if all([i, j]) and i > j:  # none of them is 0
+                inv += 1
         return True if inv % 2 == 0 else False
 
     def breath_first_search(self):
@@ -124,7 +123,6 @@ class Solver(object):
         fringe_set = {self.state}
 
         while fringe:
-
             state = fringe.pop()
             fringe_set.remove(state)
             explored.add(state)
