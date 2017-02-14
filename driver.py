@@ -45,7 +45,7 @@ class Puzzle(object):
     @property
     def solved(self):
         """Checks if puzzle is solved"""
-        return self.board == [self.HOLE] + range(1, 9)
+        return self.board == [self.HOLE] + range(1, self.WIDTH ** 2)
 
     def move(self, to, action):
         """Changes puzzle state
@@ -79,7 +79,8 @@ class Solver(object):
         self.state = Puzzle(init_state)
         self.factory = {
             'bfs': self.breath_first_search,
-            'dfs': self.depth_first_search
+            'dfs': self.depth_first_search,
+            'ast': self.a_star
         }
 
     def solve(self, method):
@@ -136,6 +137,65 @@ class Solver(object):
                     fringe.append(new_state)
                     fringe_set.add(new_state)
 
+    def a_star(self):
+        heuristic = Heuristics.manhattan
+
+        fringe = {self.state: heuristic(self.state)}
+        explored = {self.state}
+
+        while fringe:
+            state = min(fringe, key=fringe.get)
+            fringe.pop(state)
+            explored.add(state)
+
+            if state.solved:
+                return state.hist
+
+            for pos, action in state.possible_moves:
+                new_state = state.move(pos,action)
+                if new_state not in explored:
+                    fringe[new_state] = heuristic(new_state) + 1  # 1 is g(n)
+
+
+class Heuristics(object):
+
+    @staticmethod
+    def manhattan(state, width=None):
+        """Manhattan heuristic.
+
+        Cost represents the moves that a tile has to do to reach the
+        position it should be in.
+        """
+
+        width = width if width else state.WIDTH
+        cost = 0
+        for tile in state.board:
+            if not tile == state.board.index(tile) and tile != 0:
+                # up down movements
+                c_row = state.board.index(tile) // width
+                d_row = tile // width
+                if not c_row == d_row:
+                    cost += abs(c_row - d_row)
+                # left right movements
+                c_col = state.board.index(tile) - c_row * width
+                d_col = tile - d_row * width
+                if not c_col == d_col:
+                    cost += abs(c_col - d_col)
+        return cost
+
+    @staticmethod
+    def misplaced_tiles(state):
+        """Misplaced tiles heuristic.
+
+        Cost represents the number of tiles that are not in its goal state
+        """
+
+        cost = 0
+        for tile in state.board:
+            if not tile == state.board.index(tile) and tile != 0:
+                cost += 1
+        return cost
+
 
 def parse_args():
 
@@ -143,7 +203,8 @@ def parse_args():
         return map(int, val.split(BOARD_DELIMETER))
 
     parser = argparse.ArgumentParser(description='Puzzle solver')
-    parser.add_argument('method', choices=['bfs', 'dfs'], help='BFS supported')
+    parser.add_argument('method', choices=['bfs', 'dfs', 'ast'],
+                        help='BFS supported')
     parser.add_argument('board', help='The board to solve', type=board)
     return parser.parse_args()
 
