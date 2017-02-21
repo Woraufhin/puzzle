@@ -200,7 +200,6 @@ class Solver(object):
 
         def _ida_star(limit):
             while fringe:
-                print limit
                 state = min(fringe, key=fringe.get)
 
                 # Stats
