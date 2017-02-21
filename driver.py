@@ -1,5 +1,7 @@
+import os
 import argparse
 import itertools
+from time import time
 from collections import deque
 
 
@@ -14,7 +16,7 @@ class Puzzle(object):
 
     def __init__(self, board, hole=None, hist=None):
         self.board = board
-        self.hist = hist if hist else []
+        self.hist = hist if hist else ''
         self.hole = hole if hole else self.board.index(self.HOLE)
 
     @property
@@ -34,12 +36,12 @@ class Puzzle(object):
 
         for dest in (self.hole - self.WIDTH, self.hole + self.WIDTH):
             if 0 <= dest < len(self.board):
-                action = 'UP' if dest == self.hole - self.WIDTH else 'DOWN'
+                action = 'U' if dest == self.hole - self.WIDTH else 'D'
                 yield (dest, action)
 
         for dest in (self.hole - 1, self.hole + 1):
             if dest // self.WIDTH == self.hole // self.WIDTH:
-                action = 'LEFT' if dest == self.hole - 1 else 'RIGHT'
+                action = 'L' if dest == self.hole - 1 else 'R'
                 yield (dest, action)
 
     @property
@@ -55,8 +57,7 @@ class Puzzle(object):
         """
         board = self.board[:]
         board[self.hole], board[to] = board[to], board[self.hole]
-        hist = self.hist[:]
-        hist.append(action)
+        hist = self.hist + action
         return Puzzle(board, to, hist)
 
     def __hash__(self):
@@ -77,6 +78,7 @@ class Solver(object):
 
     def __init__(self, init_state):
         self.state = Puzzle(init_state)
+        self.stats = Stats()
         self.factory = {
             'bfs': self.breath_first_search,
             'dfs': self.depth_first_search,
@@ -85,7 +87,10 @@ class Solver(object):
 
     def solve(self, method):
         try:
-            return self.factory[method]()
+            now = time()
+            goal = self.factory[method]()
+            self.stats.running_time = time() - now
+            return goal
         except KeyError:
             print('Method "{}" for solving puzzle does not exist'
                   .format(method))
@@ -104,16 +109,24 @@ class Solver(object):
         fringe_set = {self.state}
 
         while fringe:
-
             state = fringe.popleft()
+
+            # Stats
+            if len(fringe_set) > self.stats.max_fringe_size:
+                self.stats.max_fringe_size = len(fringe_set)
             fringe_set.remove(state)
 
             if state.solved:
+                self.stats.goal = state
+                self.stats.fringe_size = len(fringe_set)
                 return state.hist
 
+            self.stats.nodes_expanded += 1  # Stats
             for pos, action in state.possible_moves:
                 new_state = state.move(pos, action)
                 if new_state not in explored and new_state not in fringe_set:
+                    if len(new_state.hist) > self.stats.max_search_depth:
+                        self.stats.max_search_depth = len(new_state.hist)
                     fringe.append(new_state)
                     fringe_set.add(new_state)
             explored.add(state)
@@ -125,15 +138,24 @@ class Solver(object):
 
         while fringe:
             state = fringe.pop()
+
+            # Stats
+            if len(fringe_set) > self.stats.max_fringe_size:
+                self.stats.max_fringe_size = len(fringe_set)
             fringe_set.remove(state)
             explored.add(state)
 
             if state.solved:
+                self.stats.goal = state
+                self.stats.fringe_size = len(fringe)
                 return state.hist
 
-            for pos, action in state.possible_moves:
+            self.stats.nodes_expanded += 1  # Stats
+            for pos, action in reversed(list(state.possible_moves)):
                 new_state = state.move(pos, action)
                 if new_state not in explored and new_state not in fringe_set:
+                    if len(new_state.hist) > self.stats.max_search_depth:
+                        self.stats.max_search_depth = len(new_state.hist)
                     fringe.append(new_state)
                     fringe_set.add(new_state)
 
@@ -145,16 +167,52 @@ class Solver(object):
 
         while fringe:
             state = min(fringe, key=fringe.get)
+
+            # Stats
+            if len(fringe) > self.stats.max_fringe_size:
+                self.stats.max_fringe_size = len(fringe)
+
             fringe.pop(state)
             explored.add(state)
 
             if state.solved:
+                self.stats.goal = state
+                self.stats.fringe_size = len(fringe)
                 return state.hist
+
+            self.stats.nodes_expanded += 1  # Stats
 
             for pos, action in state.possible_moves:
                 new_state = state.move(pos,action)
                 if new_state not in explored:
+                    if len(new_state.hist) > self.stats.max_search_depth:
+                        self.stats.max_search_depth = len(new_state.hist)
                     fringe[new_state] = heuristic(new_state) + 1  # 1 is g(n)
+
+    def ida_star(self):
+        heuristic = Heuristics.manhattan
+        limit = 0  # depth limit
+
+        fringe = {self.state: heuristic(self.state)}
+        explored = {self.state}
+
+        def _ida_star(limit):
+            while fringe:
+                state = min(fringe, key=fringe.get)
+
+                if limit > len(state.hist):
+                    break
+
+                fringe.pop(state)
+                explored.add(state)
+
+                if state.solved:
+                    return state.hist
+
+                for pos, action in state.possible_moves:
+                    new_state = state.move(pos,action)
+                    if new_state not in explored:
+                        fringe[new_state] = heuristic(new_state) + 1  # 1 is g(n)
 
 
 class Heuristics(object):
@@ -197,6 +255,52 @@ class Heuristics(object):
         return cost
 
 
+class Stats(object):
+
+    def __init__(self):
+        self.goal = None
+        self.nodes_expanded = 0
+        self.fringe_size = 0
+        self.max_fringe_size = 0
+        self.max_search_depth = 0
+        self.running_time = None
+
+    def __str__(self):
+        return """path_to_goal: {path}
+cost_of_path: {cost}
+nodes_expanded: {nodes}
+fringe_size: {fringe_size}
+max_fringe_size: {max_fringe_size}
+search_depth: {search_depth}
+max_search_depth: {max_search_depth}
+running_time: {running_time}
+max_ram_usage: {ram}""".format(
+    path = self._path_to_goal(),
+    cost = len(self.goal.hist),
+    nodes = self.nodes_expanded,
+    fringe_size = self.fringe_size,
+    max_fringe_size = self.max_fringe_size,
+    search_depth = len(self.goal.hist),
+    max_search_depth = self.max_search_depth,
+    running_time = self.running_time,
+    ram = self._max_ram_usage
+)
+
+    @property
+    def _max_ram_usage(self):
+        if os.name == 'posix':
+            import resource
+            return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+        else:
+            import psutil
+            p = psutil.Process()
+            return p.memory_info().rss / 1048576.0
+
+    def _path_to_goal(self):
+        mapping = {'U': 'Up', 'D': 'Down', 'L': 'Left', 'R': 'Right'}
+        return [mapping[e] for e in self.goal.hist]
+
+
 def parse_args():
 
     def board(val):
@@ -204,7 +308,7 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description='Puzzle solver')
     parser.add_argument('method', choices=['bfs', 'dfs', 'ast'],
-                        help='BFS supported')
+                        help='BFS, DFS, A* supported')
     parser.add_argument('board', help='The board to solve', type=board)
     return parser.parse_args()
 
@@ -215,6 +319,7 @@ if __name__ == '__main__':
     puzzle = Solver(args.board)
 
     if puzzle.solvable():
-        print puzzle.solve(args.method)
+        puzzle.solve(args.method)
+        print puzzle.stats
     else:
         print 'Puzzle is not solvable. It has an odd number of inversions'
