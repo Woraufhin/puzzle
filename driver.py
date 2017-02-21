@@ -6,6 +6,7 @@ from collections import deque
 
 
 BOARD_DELIMETER = ','
+OUTPUT = 'output.txt'
 
 
 class Puzzle(object):
@@ -82,7 +83,8 @@ class Solver(object):
         self.factory = {
             'bfs': self.breath_first_search,
             'dfs': self.depth_first_search,
-            'ast': self.a_star
+            'ast': self.a_star,
+            'ida': self.ida_star,
         }
 
     def solve(self, method):
@@ -198,21 +200,34 @@ class Solver(object):
 
         def _ida_star(limit):
             while fringe:
+                print limit
                 state = min(fringe, key=fringe.get)
 
-                if limit > len(state.hist):
-                    break
+                # Stats
+                if len(fringe) > self.stats.max_fringe_size:
+                    self.stats.max_fringe_size = len(fringe)
+
+                if len(state.hist) > limit:
+                    return _ida_star(limit + 1)
 
                 fringe.pop(state)
                 explored.add(state)
 
                 if state.solved:
+                    self.stats.goal = state
+                    self.stats.fringe_size = len(fringe)
                     return state.hist
+
+                self.stats.nodes_expanded += 1  # Stats
 
                 for pos, action in state.possible_moves:
                     new_state = state.move(pos,action)
                     if new_state not in explored:
+                        if len(new_state.hist) > self.stats.max_search_depth:
+                            self.stats.max_search_depth = len(new_state.hist)
                         fringe[new_state] = heuristic(new_state) + 1  # 1 is g(n)
+
+        return _ida_star(limit)
 
 
 class Heuristics(object):
@@ -307,7 +322,7 @@ def parse_args():
         return map(int, val.split(BOARD_DELIMETER))
 
     parser = argparse.ArgumentParser(description='Puzzle solver')
-    parser.add_argument('method', choices=['bfs', 'dfs', 'ast'],
+    parser.add_argument('method', choices=['bfs', 'dfs', 'ast', 'ida'],
                         help='BFS, DFS, A* supported')
     parser.add_argument('board', help='The board to solve', type=board)
     return parser.parse_args()
@@ -320,6 +335,7 @@ if __name__ == '__main__':
 
     if puzzle.solvable():
         puzzle.solve(args.method)
-        print puzzle.stats
+        with open(OUTPUT, 'w') as f:
+            f.write(str(puzzle.stats))
     else:
         print 'Puzzle is not solvable. It has an odd number of inversions'
